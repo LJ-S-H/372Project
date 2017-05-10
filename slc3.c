@@ -380,7 +380,7 @@ int main(int argc, char * argv[]) {
           }
           fclose(fp);
           loadedProgram = 1;
-          programHalted == 0;
+          programHalted = 0;
           //Initialize cpu fields;
           cpu_pointer->PC = 0;
           cpu_pointer->CC = Z;
