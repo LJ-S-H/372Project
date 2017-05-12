@@ -30,15 +30,20 @@
 #define RET 12
 #define STR 7
 #define LDR 6
+#define LDI 10
+#define STI 11
 
 #define N 4 //100
 #define Z 2 //010
 #define P 1 //001
 
 #define LOAD 1
+#define SAVE 2
 #define STEP 3
 #define RUN 4
 #define DISPLAY_MEM 5
+#define EDIT 6
+#define BRKPT 7
 #define EXIT 9
 
 #define GETC 32 //0x20

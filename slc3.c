@@ -108,6 +108,8 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                     case LD:
                     case ST:
                     case BR:
+		            case LDI:
+                    case STI:
                         pcOffset = 0x01FF & cpu->IR;
                         if (pcOffset & 0x0100) { //checks if pcOffset is negative
                             pcOffset = pcOffset | 0xFE00;
@@ -158,6 +160,12 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                             cpu->PC = cpu->PC + pcOffset;
                         }
                         break;
+                    case LDI:
+                    case STI:
+                        cpu->MAR = cpu->PC + pcOffset;
+                        cpu->MDR = memory[memory[cpu->MAR]];
+                        cpu->MAR = cpu->MDR;
+                        break;
                     default:
                         break;
                 }
@@ -190,10 +198,12 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                         break;
                     case LD:
                     case LDR:
+                    case LDI:
                         cpu->MDR = memory[cpu->MAR];
                         break;
                     case ST:
                     case STR:
+                    case STI:
                         cpu->MDR = cpu->regFile[Rd];
                         break;
                     default:
@@ -262,11 +272,13 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                         break;
                     case LD:
                     case LDR:
+                    case LDI:
                         cpu->regFile[Rd] = cpu->MDR;
                         setCC(cpu->regFile[Rd], cpu);
                         break;
                     case ST:
                     case STR:
+                    case STI:
                         memory[cpu->MAR] = cpu->MDR;
                         break;
                     case LEA:
@@ -420,7 +432,6 @@ int main(int argc, char * argv[]) {
         }
         break;
       case DISPLAY_MEM:
-
         printf("Starting Address: ");
         scanf("%s", input);
         temp_offset = strtol(input, &temp, 16) - start_address;
@@ -431,6 +442,17 @@ int main(int argc, char * argv[]) {
           offset = temp_offset;
         }
 
+        break;
+      case SAVE:
+        printf("Starting Address: ");
+        scanf("%s", input);
+        temp_offset = strtol(input, &temp, 16) - start_address;
+        if(temp_offset >= SIZE_OF_MEM || temp_offset < 0){
+          printf("Not a valid address <ENTER> to continue.");
+          getEnterInput(error);
+        } else {
+          offset = temp_offset;
+        }
         break;
       case EXIT:
         printf("Goodbye\n");
