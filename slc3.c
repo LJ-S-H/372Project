@@ -363,7 +363,7 @@ int main(int argc, char * argv[]) {
   while (1){
     printf("Welcome to the LC-3 Simulator Simulator\n");
 	  printCurrentState(cpu_pointer, alu_pointer, offset, start_address);
-	  printf("Select: 1) Load, 3) Step, 4) Run, 5) Display Mem, 9) Exit\n> ");
+	  printf("Select: 1) Load, 3) Step, 4) Run, 5) Display Mem, 6) Edit, 9) Exit\n> ");
     scanf("%d", &choice);
     switch(choice){
       case LOAD:
@@ -441,8 +441,22 @@ int main(int argc, char * argv[]) {
         } else {
           offset = temp_offset;
         }
-
         break;
+	  case EDIT:
+		  printf("The memory address to be edited: ");
+		  scanf("%s", input);
+		  temp_offset = strtol(input, &temp, 16) - start_address;
+		  if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
+			  printf("Not a valid address <ENTER> to continue.");
+			  getEnterInput(error);
+		  }
+		  else {
+			  printf("x%04X: x%04X\n", temp_offset + start_address, memory[temp_offset]);
+			  printf("The new contents to be entered in hex: ");
+			  scanf("%s", input);
+			  memory[temp_offset] = strtol(input, &temp, 16);
+		  }
+		  break;
       case SAVE:
         printf("Starting Address: ");
         scanf("%s", input);
