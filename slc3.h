@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #define DEBUG 0
-#define SIZE_OF_MEM 2048
+#define SIZE_OF_MEM 0xFFFF
 #define DISPLAY_SIZE 16
 #define DEFAULT_ADDRESS 0x3000
 

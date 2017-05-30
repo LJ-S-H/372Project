@@ -72,6 +72,8 @@ int trap(int trap_vector, CPU_p cpu) {
     return 0;
 }
 
+
+
 //Executes instructions on our simulated CPU.
 int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
     Register opcode, Rd, Rs1, Rs2, immed_offset, nzp, BEN, pcOffset; // fields for the IR
@@ -348,22 +350,28 @@ int main(int argc, char * argv[]) {
     cpu_pointer->PC = 0;
     cpu_pointer->CC = Z;
     char input[50];
+    char file_name[50];
     int choice;
     char error;
     char buf[5];
     char *temp;
     int temp_offset;
     int offset = 0;
+    int save_temp = 0;
     unsigned short start_address = DEFAULT_ADDRESS;
     int loadedProgram = 0;
     int programHalted = 0;
     cpu_pointer->regFile[0] = 0x1E; //R0 = 30
     cpu_pointer->regFile[7] = 0x5; //R7 = 5
+    int n;
+    int owCheck;
+    int saveCheck = 1;
+    unsigned int start, end;
 
-  while (1){
+  while (1) {
     printf("Welcome to the LC-3 Simulator Simulator\n");
 	  printCurrentState(cpu_pointer, alu_pointer, offset, start_address);
-	  printf("Select: 1) Load, 3) Step, 4) Run, 5) Display Mem, 9) Exit\n> ");
+	  printf("Select: 1) Load, 2) Save, 3) Step, 4) Run, 5) Display Mem, 9) Exit\n> ");
     scanf("%d", &choice);
     switch(choice){
       case LOAD:
@@ -444,15 +452,37 @@ int main(int argc, char * argv[]) {
 
         break;
       case SAVE:
-        printf("Starting Address: ");
-        scanf("%s", input);
-        temp_offset = strtol(input, &temp, 16) - start_address;
-        if(temp_offset >= SIZE_OF_MEM || temp_offset < 0){
-          printf("Not a valid address <ENTER> to continue.");
-          getEnterInput(error);
+        printf("\nEnter file name to save to: ");
+        scanf("%s", file_name);
+        FILE *fp1 = fopen(file_name, "r");
+        if(fp1 == NULL) {
+            n = 0;
         } else {
-          offset = temp_offset;
+            n = 1;
+            fclose(fp1);
         }
+        
+        if(n == 1) {
+            printf("\nFile already exists, overwrite? 1 for yes, 2 for no: ");
+            scanf("%d", &owCheck);   
+            if(owCheck != 1) {
+                saveCheck = 0;            
+            }
+        }
+        
+        if(saveCheck) {
+            FILE *fp2 = fopen(file_name, "w");
+            printf("\nEnter start and end address like this: XXXX, XXXX:\n> ");
+            scanf("%04X, %04X", &start, &end);
+            if(start > end || start < 0 || end < 0 || end > SIZE_OF_MEM) {
+                printf("Invalid address range");
+                getEnterInput(error);
+            }
+            for(int i = start; i <= end; i++) {
+                fprintf(fp2, "%04X\n", memory[i - start_address]);
+            }
+            fclose(fp2);
+        } 
         break;
       case EXIT:
         printf("Goodbye\n");
@@ -467,3 +497,7 @@ int main(int argc, char * argv[]) {
   }
   return 0;
 }
+
+
+
+
