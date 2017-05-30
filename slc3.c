@@ -516,8 +516,8 @@ int main(int argc, char * argv[]) {
         scanf("%s", file_name);
         FILE *fp1 = fopen(file_name, "r");
         if(fp1 == NULL) {
-            n = 0;
-
+	      saveCheck = 1;
+          n = 0;
         } else {
             n = 1;
             fclose(fp1);
@@ -539,9 +539,10 @@ int main(int argc, char * argv[]) {
             if(start > end || start < 0 || end < 0 || end > SIZE_OF_MEM) {
                 printf("Invalid address range");
                 getEnterInput();
-            }
-            for(i = start; i <= end; i++) {
-                fprintf(fp2, "%04X\n", memory[i - start_address]);
+            } else {
+                for(i = start; i <= end; i++) {
+                    fprintf(fp2, "%04X\n", memory[i - start_address]);
+                }
             }
             fclose(fp2);
         } 
