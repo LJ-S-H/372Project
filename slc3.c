@@ -2,6 +2,85 @@
 #include "slc3.h"
 #include <unistd.h>
 #include <termios.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#define DEBUG 0
+#define INPUT_SIZE 50
+#define SIZE_OF_MEM 1024
+#define DISPLAY_SIZE 16
+#define DEFAULT_ADDRESS 0x3000
+#define STRTOL_BASE 16
+#define MAX_NUM_BKPTS 4
+#define DEFAULT_BKPT_VALUE 9999
+#define CACHE_LINES 256
+#define CACHE_BLOCK 4
+#define R7 regFile[7]
+#define OPCODE_MASK 0xF000
+#define DEST_REG_MASK 0x0E00
+#define SOURCE1_REG_MASK 0x01C0
+#define SOURCE2_REG_MASK 0x0007
+#define TRAP_VECTOR_8_MASK 0x00FF
+#define IMMED5_MASK 0x1F
+#define PCOFFSET6_MASK 0x003F
+#define PCOFFSET9_MASK 0x01FF
+#define PCOFFSET11_MASK 0x07FF
+#define INVERSE_IMMED5_MASK 0xFFE0
+#define INVERSE_PCOFFSET6_MASK 0xFFC0
+#define INVERSE_PCOFFSET9_MASK 0xFE00
+#define INVERSE_PCOFFSET11_MASK 0xF800
+#define BIT_4_MASK 0x10
+#define BIT_5_MASK 0x20
+#define BIT_8_MASK 0x0100
+#define BIT_10_MASK 0x0400
+#define BIT_11_MASK 0x0800
+#define OPCODE_SHIFT_AMT 12
+#define DEST_REG_SHIFT_AMT 9
+#define SOURCE1_SHIFT_AMT 6
+
+#define FETCH 0
+#define DECODE 1
+#define EVAL_ADDR 2
+#define FETCH_OP 3
+#define EXECUTE 4
+#define STORE 5
+#define DONE 6
+#define SET_BKPT 7
+#define UNSET_BKPT 8
+
+#define ADD 1
+#define AND 5
+#define NOT 9
+#define TRAP 15
+#define LD 2
+#define ST 3
+#define JMP 12
+#define BR 0
+#define JSR 4
+#define LEA 14
+#define RET 12
+#define STR 7
+#define LDR 6
+#define LDI 10
+#define STI 11
+
+#define N 4 //100
+#define Z 2 //010
+#define P 1 //001
+
+#define LOAD 1
+#define SAVE 2
+#define STEP 3
+#define RUN 4
+#define DISPLAY_MEM 5
+#define EDIT 6
+#define BRKPT 7
+#define EXIT 9
+
+#define GETC 32 //0x20
+#define OUT 33 //0x21
+#define PUTS 34 //0x22
+#define HALT 37 //0x25
 
 // you can define a simple memory module here for this program
 Register memory[SIZE_OF_MEM]; // 32 words of memory enough to store simple program
@@ -96,14 +175,14 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                 break;
             case DECODE: // microstate 32
                 // get the fields out of the IR
-                opcode = cpu->IR & 0xF000;
-                opcode = opcode >> 12;
-                Rd = cpu->IR & 0x0E00;
-                Rd = Rd >> 9;
+                opcode = cpu->IR & OPCODE_MASK;
+                opcode = opcode >> OPCODE_SHIFT_AMT;
+                Rd = cpu->IR & DEST_REG_MASK;
+                Rd = Rd >> DEST_REG_SHIFT_AMT;
                 nzp = Rd;
-                Rs1 = cpu->IR & 0x01C0;
-                Rs1 = Rs1 >> 6;
-                Rs2 = cpu->IR & 0x0007;
+                Rs1 = cpu->IR & SOURCE1_REG_MASK;
+                Rs1 = Rs1 >> SOURCE1_SHIFT_AMT;
+                Rs2 = cpu->IR & SOURCE2_REG_MASK;
                 BEN = cpu->CC & nzp; //current cc & instruction's nzp
                 switch (opcode) {
                     case LEA: //pcOffset9
@@ -112,23 +191,23 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                     case BR:
 		            case LDI:
                     case STI:
-                        pcOffset = 0x01FF & cpu->IR;
-                        if (pcOffset & 0x0100) { //checks if pcOffset is negative
-                            pcOffset = pcOffset | 0xFE00;
+                        pcOffset = PCOFFSET9_MASK & cpu->IR;
+                        if (pcOffset & BIT_8_MASK) { //checks if pcOffset is negative
+                            pcOffset = pcOffset | INVERSE_PCOFFSET9_MASK;
                         }
                         break;
                     case STR: //pcOffset6
                     case LDR:
-                        pcOffset = 0x003F & cpu->IR; //0011 1111 & IR
-                        if (pcOffset & 0x0020) {
-                            pcOffset = pcOffset | 0xFFC0;
+                        pcOffset = PCOFFSET6_MASK & cpu->IR; //0011 1111 & IR
+                        if (pcOffset & BIT_5_MASK) {
+                            pcOffset = pcOffset | INVERSE_PCOFFSET6_MASK;
                         }
                         break;
                     case JSR: 
-                        if (0x0800 & cpu->IR) { //if doing JSR, get pcOffset11
-                            pcOffset = 0x07FF & cpu->IR; //0111 1111 1111 & IR
-                            if (pcOffset & 0x0400) {
-                                pcOffset = pcOffset | 0xF800;
+                        if (BIT_11_MASK & cpu->IR) { //if doing JSR, get pcOffset11
+                            pcOffset = PCOFFSET11_MASK & cpu->IR; //0111 1111 1111 & IR
+                            if (pcOffset & BIT_10_MASK) {
+                                pcOffset = pcOffset | INVERSE_PCOFFSET11_MASK;
                             }
                         }
                         break;
@@ -148,7 +227,7 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
             case EVAL_ADDR:
                 switch (opcode) {
                     case TRAP:
-                        cpu->MAR = cpu->IR & 0x00FF; //get the trapvector8
+                        cpu->MAR = cpu->IR & TRAP_VECTOR_8_MASK; //get the trapvector8
                         break;
                     case LD:
                     case ST:
@@ -186,12 +265,12 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                     case ADD:
                     case AND:
                         alu->A = cpu->regFile[Rs1];
-                        if ((cpu->IR & 0x20) == 0) {
+                        if ((cpu->IR & BIT_5_MASK) == 0) {
                             alu->B = cpu->regFile[Rs2];
                         } else {
-                            alu->B = cpu->IR & 0x1F; //get immed5.
-                            if ((alu->B & 0x10) != 0) { //if first bit of immed5 = 1
-                                alu->B = (alu->B | 0xFFE0);
+                            alu->B = cpu->IR & IMMED5_MASK; //get immed5.
+                            if ((alu->B & BIT_4_MASK) != 0) { //if first bit of immed5 = 1
+                                alu->B = (alu->B | INVERSE_IMMED5_MASK);
                             }
                         }
                         break;
@@ -242,8 +321,8 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                         cpu->PC = cpu->regFile[Rs1];
                         break;
                     case JSR:
-                        cpu->regFile[7] = cpu->PC; //R7 = PC
-                        if (0x0800 & cpu->IR) { //if JSRR
+                        cpu->R7 = cpu->PC; //R7 = PC
+                        if (BIT_11_MASK & cpu->IR) { //if JSRR
                             cpu->PC += pcOffset; //PC = PC + PCoffset11
                         } else { //else doing JSR
                             cpu->PC = cpu->regFile[Rs1]; //PC = BaseReg
@@ -301,29 +380,29 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
 void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short start_address) {
   int i , j;
   int numOfRegisters = sizeof(cpu->regFile)/sizeof(cpu->regFile[0]);
-  printf("        Registers           Memory\n");
+  printf("Registers            Instruction Cache               Memory\n");
   for (i = 0, j = mem_Offset; i < DISPLAY_SIZE; i++, j++) {
     if(i < numOfRegisters) {
-      printf("        R%d: x%04X        ", i, cpu->regFile[i] & 0xffff);  //don't use leading 4 bits
+      printf("R%d: x%04X     ", i, cpu->regFile[i] & 0xffff);  //don't use leading 4 bits
+      if (i < 4) { //Instruction cache contents
+          printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + (i * 4), memory[j], memory[j + 1], memory[j + 2], memory[j + 3]);
+      } else if (i == 4) { //Data cache header
+          printf("         Data L1 Cache              ");
+      }                  
+    } else if (i < 13) { //Print cache stuff
+        printf("              ");
+    } else if (i == 13) { //print PC, IR, etc...
+        printf("PC:x%04X  IR:x%04X  A: x%04X  B: x%04X            ",cpu->PC + start_address, cpu->IR, alu->A  & 0xffff, alu->B & 0xffff);
+    } else if (i == 14) {
+        printf("MAR: x%04X MDR: x%04X CC: N:%d Z:%d P:%d             ",cpu->MAR, cpu->MDR & 0xffff, (cpu->CC & 4) > 0, (cpu->CC & 2) > 0, (cpu->CC & 1) > 0);
     } else {
-        switch(i){
-          case 11:
-            printf("   PC:x%04X   IR:x%04X   ",cpu->PC + start_address, cpu->IR);
-            break;
-          case 12:
-            printf("   A: x%04X   B: x%04X   ",alu->A  & 0xffff, alu->B & 0xffff); //don't use leading 4 bits
-            break;
-          case 13:
-            printf("  MAR:x%04X MDR: x%04X   ",cpu->MAR, cpu->MDR & 0xffff); //don't use leading 4 bits
-            break;
-          case 14:
-            printf("      CC: N:%d Z:%d P:%d    ",(cpu->CC & 4) > 0, (cpu->CC & 2) > 0, (cpu->CC & 1) > 0);
-            break;
-          default:
-            printf("                         ");
-            break;
-        }
+        printf("                                                  ");
     }
+    
+    if (i < 13 && i > 4) { //Data cache contents
+        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + 0x0A00 + ((i - 5) * 4), memory[j], memory[j + 1], memory[j + 2], memory[j + 3]);
+    }
+    
     if(j < SIZE_OF_MEM){
       printf("x%04X: x%04X\n", j + start_address, memory[j]);
     } else {
@@ -353,14 +432,28 @@ void clearBreakpoints(Register breakpoints[]) {
     }
 }
 
-int hitBreakpoint(Register breakpoints[], Register PC) {
+int hitBreakpoint(Register breakpoints[], Register PC, int *numBreakpoints, int remove) {
    int i;
     for (i = 0; i < MAX_NUM_BKPTS; i++) {
         if (breakpoints[i] == PC) {
+            if (remove) {
+              breakpoints[i] = DEFAULT_BKPT_VALUE;
+              (*numBreakpoints)--;
+            }                                                
             return 1;
         }
     }
     return 0;
+}
+
+int getEmptyIndex(Register breakpoints[]) {
+  int i;
+    for (i = 0; i < MAX_NUM_BKPTS; i++) {
+        if (breakpoints[i] == DEFAULT_BKPT_VALUE) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void printCurrentBreakpoints(Register breakpoints[], int start_address) {
@@ -380,8 +473,8 @@ int main(int argc, char * argv[]) {
     ALU_p alu_pointer = malloc(sizeof(struct ALU_s));
     cpu_pointer->PC = 0;
     cpu_pointer->CC = Z;
-    char input[50];
-    char file_name[50];
+    char input[INPUT_SIZE];
+    char file_name[INPUT_SIZE];
     int choice;
     char buf[5];
     char *temp;
@@ -391,8 +484,6 @@ int main(int argc, char * argv[]) {
     unsigned short start_address = DEFAULT_ADDRESS;
     int loadedProgram = 0;
     int programHalted = 0;
-    cpu_pointer->regFile[0] = 0x1E; //R0 = 30
-    cpu_pointer->regFile[7] = 0x5; //R7 = 5
     int n;
     int owCheck;
     int saveCheck = 1;
@@ -402,7 +493,7 @@ int main(int argc, char * argv[]) {
     clearBreakpoints(breakpoints);
 
   while (1) {
-    printf("Welcome to the LC-3 Simulator Simulator\n");
+    printf("           Welcome to the LC-3 Simulator Simulator\n");
 	  printCurrentState(cpu_pointer, alu_pointer, offset, start_address);
 	  printf("Select: 1) Load, 2) Save, 3) Step, 4) Run, 5) Display Mem, 6) Edit, 7) Set Bkpt, 8) Unset Bkpt, 9) Exit\n> ");
     scanf("%d", &choice);
@@ -419,7 +510,7 @@ int main(int argc, char * argv[]) {
           while(!feof(fp)) {
             if(i == 0){
               fgets(buf, 5, fp);
-              start_address = strtol(buf, &temp, 16);
+              start_address = strtol(buf, &temp, STRTOL_BASE);
               fgets(buf,3, fp);
             }
             fgets(buf, 5, fp);
@@ -427,7 +518,7 @@ int main(int argc, char * argv[]) {
               printf("Error: Not enough memory");
               break;
             }
-            memory[i] = strtol(buf, &temp, 16);
+            memory[i] = strtol(buf, &temp, STRTOL_BASE);
             i++;
             fgets(buf,3, fp);
           }
@@ -446,8 +537,10 @@ int main(int argc, char * argv[]) {
           int response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
           if (response == HALT) {
             loadedProgram = 0;
-            programHalted = 1;
+            programHalted = 1;                        
             printf("\n======Program halted.======\nPress <ENTER> to continue.");
+            numBreakpoints = 0;
+            clearBreakpoints(breakpoints);
             getEnterInput();
           }
         } else if (programHalted == 1){
@@ -461,18 +554,23 @@ int main(int argc, char * argv[]) {
       case RUN:
         if (loadedProgram == 1) {
           int response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
-          int reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC);
-          while (response != HALT && !reachedBreakpoint) {
+          int reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC, &numBreakpoints, 1);
+          while (response != HALT && !reachedBreakpoint && cpu_pointer->PC != SIZE_OF_MEM) {
             response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
-            reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC);
+            reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC, &numBreakpoints, 1);
           }
+          
           if (reachedBreakpoint) {
               printf("Reached breakpoint: x%04X\nPress <ENTER> to return to the menu.", cpu_pointer->PC + start_address);
               getEnterInput();
           } else {
             loadedProgram = 0;
             programHalted = 1;
-            printf("\n======Program halted.======\nPress <ENTER> to continue.");
+            
+            if (cpu_pointer->PC == SIZE_OF_MEM)
+              printf("\n======= END OF MEMORY REACHED =======\nPlease include a HALT in your program to prevent this from happening.\nPress <ENTER> to continue.");
+            else
+              printf("\n======Program halted.======\nPress <ENTER> to continue.");
             numBreakpoints = 0;
             clearBreakpoints(breakpoints);
             getEnterInput();
@@ -488,7 +586,7 @@ int main(int argc, char * argv[]) {
       case DISPLAY_MEM:
         printf("Starting Address: ");
         scanf("%s", input);
-        temp_offset = strtol(input, &temp, 16) - start_address;
+        temp_offset = strtol(input, &temp, STRTOL_BASE) - start_address;
         if(temp_offset >= SIZE_OF_MEM || temp_offset < 0){
           printf("Not a valid address <ENTER> to continue.");
           getEnterInput();
@@ -499,7 +597,7 @@ int main(int argc, char * argv[]) {
 	  case EDIT:
 		  printf("The memory address to be edited: ");
 		  scanf("%s", input);
-		  temp_offset = strtol(input, &temp, 16) - start_address;
+		  temp_offset = strtol(input, &temp, STRTOL_BASE) - start_address;
 		  if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
 			  printf("Not a valid address <ENTER> to continue.");
 			  getEnterInput();
@@ -508,7 +606,7 @@ int main(int argc, char * argv[]) {
 			  printf("x%04X: x%04X\n", temp_offset + start_address, memory[temp_offset]);
 			  printf("The new contents to be entered in hex: ");
 			  scanf("%s", input);
-			  memory[temp_offset] = strtol(input, &temp, 16);
+			  memory[temp_offset] = strtol(input, &temp, STRTOL_BASE);
 		  }
 		  break;
       case SAVE:
@@ -564,15 +662,15 @@ int main(int argc, char * argv[]) {
         }
         printf("The memory address to break at: ");
 		    scanf("%s", input);
-		    temp_offset = strtol(input, &temp, 16) - start_address;
+		    temp_offset = strtol(input, &temp, STRTOL_BASE) - start_address;
 		    if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
 			    printf("Not a valid address, press <ENTER> to continue.");
 			    getEnterInput();
 		    } else {
-          if (hitBreakpoint(breakpoints, temp_offset)) { //If there's already a breakpoint at this mem address.
+          if (hitBreakpoint(breakpoints, temp_offset, NULL, 0)) { //If there's already a breakpoint at this mem address.
             printf("It appears that you've already set a breakpoint at address: x%04X\nPress <ENTER> to continue.", temp_offset + start_address);
           } else {
-            breakpoints[numBreakpoints] = temp_offset;
+            breakpoints[getEmptyIndex(breakpoints)] = temp_offset;
             numBreakpoints++;
             printf("Successfully set breakpoint at: x%04X\nPress <ENTER> to continue.", temp_offset + start_address); 
           }                   
@@ -581,7 +679,7 @@ int main(int argc, char * argv[]) {
           break;
       case UNSET_BKPT:
         if (numBreakpoints == 0) {
-          printf("You haven't set any breakpoints yet. Please set one and try again. Press <ENTER> to continue.");
+          printf("You haven't set any breakpoints yet. Please set one and try again.\nPress <ENTER> to continue.");
           getEnterInput();
           break;
         }
@@ -590,7 +688,7 @@ int main(int argc, char * argv[]) {
         
         printf("The memory address to unset: ");
 		    scanf("%s", input);
-		    temp_offset = strtol(input, &temp, 16) - start_address;
+		    temp_offset = strtol(input, &temp, STRTOL_BASE) - start_address;
 		    if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
 			    printf("Not a valid address, press <ENTER> to continue.");
 			    getEnterInput();
@@ -598,7 +696,6 @@ int main(int argc, char * argv[]) {
           int i;
           int temp = numBreakpoints;
           for (i = 0; i < MAX_NUM_BKPTS; i++) {
-            printf("YO: x%04X\nLS: x%04X", breakpoints[i], temp_offset);
             if (breakpoints[i] == temp_offset) {
               breakpoints[i] = DEFAULT_BKPT_VALUE;
               numBreakpoints--;
