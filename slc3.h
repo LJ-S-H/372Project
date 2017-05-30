@@ -5,11 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #define DEBUG 0
-#define SIZE_OF_MEM 0xFFFF
+#define SIZE_OF_MEM 1024
 #define DISPLAY_SIZE 16
 #define DEFAULT_ADDRESS 0x3000
 #define MAX_NUM_BKPTS 4
 #define DEFAULT_BKPT_VALUE 9999
+#define CACHE_LINES 256
+#define CACHE_BLOCK 4
 
 #define FETCH 0
 #define DECODE 1
