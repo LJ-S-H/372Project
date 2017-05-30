@@ -8,6 +8,8 @@
 #define SIZE_OF_MEM 0xFFFF
 #define DISPLAY_SIZE 16
 #define DEFAULT_ADDRESS 0x3000
+#define MAX_NUM_BKPTS 4
+#define DEFAULT_BKPT_VALUE 9999
 
 #define FETCH 0
 #define DECODE 1
@@ -16,6 +18,8 @@
 #define EXECUTE 4
 #define STORE 5
 #define DONE 6
+#define SET_BKPT 7
+#define UNSET_BKPT 8
 
 #define ADD 1
 #define AND 5

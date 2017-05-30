@@ -334,7 +334,9 @@ void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short star
 
 //Handles user input when an error message tells them
 //to "Press <ENTER> to continue"
-void getEnterInput(char error) {
+void getEnterInput() {
+  char error;
+
   while(1){
     scanf("%c",&error);
     scanf("%c",&error);
@@ -342,6 +344,35 @@ void getEnterInput(char error) {
       break;
     }
   }
+}
+
+void clearBreakpoints(Register breakpoints[]) {
+    int i;
+    for (i = 0; i < MAX_NUM_BKPTS; i++) {
+        breakpoints[i] = DEFAULT_BKPT_VALUE;
+    }
+}
+
+int hitBreakpoint(Register breakpoints[], Register PC) {
+   int i;
+    for (i = 0; i < MAX_NUM_BKPTS; i++) {
+        if (breakpoints[i] == PC) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void printCurrentBreakpoints(Register breakpoints[], int start_address) {
+    printf("\n======= Current Breakpoints =======\n");
+    int i;
+    for (i = 0; i < MAX_NUM_BKPTS; i++) {
+        if (breakpoints[i] != DEFAULT_BKPT_VALUE) {
+            printf("x%04X\n", breakpoints[i] + start_address);
+        }
+    }
+    
+    printf("===================================\n\n");
 }
 
 int main(int argc, char * argv[]) {
@@ -352,7 +383,6 @@ int main(int argc, char * argv[]) {
     char input[50];
     char file_name[50];
     int choice;
-    char error;
     char buf[5];
     char *temp;
     int temp_offset;
@@ -367,11 +397,14 @@ int main(int argc, char * argv[]) {
     int owCheck;
     int saveCheck = 1;
     unsigned int start, end;
+    Register breakpoints[MAX_NUM_BKPTS];
+    int numBreakpoints = 0;
+    clearBreakpoints(breakpoints);
 
   while (1) {
     printf("Welcome to the LC-3 Simulator Simulator\n");
 	  printCurrentState(cpu_pointer, alu_pointer, offset, start_address);
-	  printf("Select: 1) Load, 2) Save, 3) Step, 4) Run, 5) Display Mem, 9) Exit\n> ");
+	  printf("Select: 1) Load, 2) Save, 3) Step, 4) Run, 5) Display Mem, 6) Edit, 7) Set Bkpt, 8) Unset Bkpt, 9) Exit\n> ");
     scanf("%d", &choice);
     switch(choice){
       case LOAD:
@@ -380,7 +413,7 @@ int main(int argc, char * argv[]) {
         FILE *fp = fopen(input, "r");
         if(fp == NULL){
           printf("Error: File not found. Press <ENTER> to continue");
-          getEnterInput(error);
+          getEnterInput();
         } else {
           int i = 0;
           while(!feof(fp)) {
@@ -401,6 +434,8 @@ int main(int argc, char * argv[]) {
           fclose(fp);
           loadedProgram = 1;
           programHalted = 0;
+          numBreakpoints = 0;
+          clearBreakpoints(breakpoints);
           //Initialize cpu fields;
           cpu_pointer->PC = 0;
           cpu_pointer->CC = Z;
@@ -412,31 +447,42 @@ int main(int argc, char * argv[]) {
           if (response == HALT) {
             loadedProgram = 0;
             programHalted = 1;
-            printf("\n======Program halted.======\n");
+            printf("\n======Program halted.======\nPress <ENTER> to continue.");
+            getEnterInput();
           }
         } else if (programHalted == 1){
-          printf("Your program has halted. Please load another program. \nPress <ENTER> to continue");
-          getEnterInput(error);
+          printf("Your program has halted. Please load another program. \nPress <ENTER> to continue.");
+          getEnterInput();
         } else {
           printf("Please load a program first. Press <ENTER> to continue");
-          getEnterInput(error);
+          getEnterInput();
         }
         break;
       case RUN:
         if (loadedProgram == 1) {
           int response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
-          while (response != HALT) {
+          int reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC);
+          while (response != HALT && !reachedBreakpoint) {
             response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
+            reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC);
           }
-          loadedProgram = 0;
-          programHalted = 1;
-          printf("\n======Program halted.======\n");
+          if (reachedBreakpoint) {
+              printf("Reached breakpoint: x%04X\nPress <ENTER> to return to the menu.", cpu_pointer->PC + start_address);
+              getEnterInput();
+          } else {
+            loadedProgram = 0;
+            programHalted = 1;
+            printf("\n======Program halted.======\nPress <ENTER> to continue.");
+            numBreakpoints = 0;
+            clearBreakpoints(breakpoints);
+            getEnterInput();
+          }
         } else if (programHalted == 1){
-          printf("Your program has halted. Please load another program. \nPress <ENTER> to continue");
-          getEnterInput(error);
+          printf("Your program has halted. Please load another program.\nPress <ENTER> to continue.");
+          getEnterInput();
         } else {
-          printf("Please load a program first. Press <ENTER> to continue");
-          getEnterInput(error);
+          printf("Please load a program first. Press <ENTER> to continue.");
+          getEnterInput();
         }
         break;
       case DISPLAY_MEM:
@@ -445,18 +491,33 @@ int main(int argc, char * argv[]) {
         temp_offset = strtol(input, &temp, 16) - start_address;
         if(temp_offset >= SIZE_OF_MEM || temp_offset < 0){
           printf("Not a valid address <ENTER> to continue.");
-          getEnterInput(error);
+          getEnterInput();
         } else {
           offset = temp_offset;
         }
-
         break;
+	  case EDIT:
+		  printf("The memory address to be edited: ");
+		  scanf("%s", input);
+		  temp_offset = strtol(input, &temp, 16) - start_address;
+		  if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
+			  printf("Not a valid address <ENTER> to continue.");
+			  getEnterInput();
+		  }
+		  else {
+			  printf("x%04X: x%04X\n", temp_offset + start_address, memory[temp_offset]);
+			  printf("The new contents to be entered in hex: ");
+			  scanf("%s", input);
+			  memory[temp_offset] = strtol(input, &temp, 16);
+		  }
+		  break;
       case SAVE:
         printf("\nEnter file name to save to: ");
         scanf("%s", file_name);
         FILE *fp1 = fopen(file_name, "r");
         if(fp1 == NULL) {
             n = 0;
+
         } else {
             n = 1;
             fclose(fp1);
@@ -484,6 +545,73 @@ int main(int argc, char * argv[]) {
             fclose(fp2);
         } 
         break;
+      case SET_BKPT:
+        if (loadedProgram == 0) {
+            printf("Please load a program and try again. Press <ENTER> to continue.");
+            getEnterInput();
+            break;
+        }
+        
+        if (numBreakpoints > 0)
+          printCurrentBreakpoints(breakpoints, start_address); 
+        
+        if (numBreakpoints == MAX_NUM_BKPTS) {
+          printf("You've already set %d breakpoints (the maximum amount).\nPlease unset one and try again. Press <ENTER> to continue.", MAX_NUM_BKPTS);
+          getEnterInput();
+          break;
+        }
+        printf("The memory address to break at: ");
+		    scanf("%s", input);
+		    temp_offset = strtol(input, &temp, 16) - start_address;
+		    if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
+			    printf("Not a valid address, press <ENTER> to continue.");
+			    getEnterInput();
+		    } else {
+          if (hitBreakpoint(breakpoints, temp_offset)) { //If there's already a breakpoint at this mem address.
+            printf("It appears that you've already set a breakpoint at address: x%04X\nPress <ENTER> to continue.", temp_offset + start_address);
+          } else {
+            breakpoints[numBreakpoints] = temp_offset;
+            numBreakpoints++;
+            printf("Successfully set breakpoint at: x%04X\nPress <ENTER> to continue.", temp_offset + start_address); 
+          }                   
+          getEnterInput(); 
+        }
+          break;
+      case UNSET_BKPT:
+        if (numBreakpoints == 0) {
+          printf("You haven't set any breakpoints yet. Please set one and try again. Press <ENTER> to continue.");
+          getEnterInput();
+          break;
+        }
+        
+        printCurrentBreakpoints(breakpoints, start_address);
+        
+        printf("The memory address to unset: ");
+		    scanf("%s", input);
+		    temp_offset = strtol(input, &temp, 16) - start_address;
+		    if (temp_offset >= SIZE_OF_MEM || temp_offset < 0) {
+			    printf("Not a valid address, press <ENTER> to continue.");
+			    getEnterInput();
+		    } else {
+          int i;
+          int temp = numBreakpoints;
+          for (i = 0; i < MAX_NUM_BKPTS; i++) {
+            printf("YO: x%04X\nLS: x%04X", breakpoints[i], temp_offset);
+            if (breakpoints[i] == temp_offset) {
+              breakpoints[i] = DEFAULT_BKPT_VALUE;
+              numBreakpoints--;
+              break;
+            }
+          }
+          if (temp == numBreakpoints) { //Breakpoint not found in array.
+            printf("Breakpoint to unset not found, press <ENTER> to continue.");
+            getEnterInput();
+          } else {
+            printf("Successfully removed breakpoint at: x%04X\nPress <ENTER> to continue.", temp_offset + start_address); 
+            getEnterInput(); 
+          }
+        }
+          break;
       case EXIT:
         printf("Goodbye\n");
         return 0;
