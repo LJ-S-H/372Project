@@ -532,14 +532,15 @@ int main(int argc, char * argv[]) {
         }
         
         if(saveCheck) {
+            int i;
             FILE *fp2 = fopen(file_name, "w");
             printf("\nEnter start and end address like this: XXXX, XXXX:\n> ");
             scanf("%04X, %04X", &start, &end);
             if(start > end || start < 0 || end < 0 || end > SIZE_OF_MEM) {
                 printf("Invalid address range");
-                getEnterInput(error);
+                getEnterInput();
             }
-            for(int i = start; i <= end; i++) {
+            for(i = start; i <= end; i++) {
                 fprintf(fp2, "%04X\n", memory[i - start_address]);
             }
             fclose(fp2);
