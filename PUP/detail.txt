@@ -1,0 +1,4 @@
+R0 and R1 = 0
+R0 = 3
+push (should do R0->R6)
+pop  (should do R6->R1)
