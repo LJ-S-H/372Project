@@ -96,7 +96,7 @@ void initializeCaches() {
 }
 
 void accessMemory(CPU_p cpu, Register cacheIndex, Cache_Entry cache[]) {
-    sleep(SECONDS_TO_SLEEP); //Sleep because accessing memory.
+    usleep(MICROSECONDS_TO_SLEEP); //Sleep because accessing memory.
     cpu->MDR = memory[cpu->MAR];
     cache[cacheIndex].data = cpu->MDR;
 }
@@ -123,7 +123,7 @@ void getInstruction(CPU_p cpu) {
 }
 
 void writeToMemory(CPU_p cpu, Register writeAddress, Register cacheIndex) {
-    sleep(SECONDS_TO_SLEEP); //Sleep because accessing memory.
+    usleep(MICROSECONDS_TO_SLEEP); //Sleep because accessing memory.
     memory[writeAddress] = dataCache[cacheIndex].data;
 }
 
@@ -418,7 +418,7 @@ void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short star
     } else if (i == 13) { //print PC, IR, etc...
         printf("PC:x%04X  IR:x%04X  A: x%04X  B: x%04X            ",cpu->PC + start_address, cpu->IR, alu->A  & 0xffff, alu->B & 0xffff);
     } else if (i == 14) {
-        printf("MAR: x%04X MDR: x%04X CC: N:%d Z:%d P:%d             ",cpu->MAR, cpu->MDR & 0xffff, (cpu->CC & 4) > 0, (cpu->CC & 2) > 0, (cpu->CC & 1) > 0);
+        printf("MAR: x%04X MDR: x%04X CC: N:%d Z:%d P:%d             ",cpu->MAR + start_address, cpu->MDR & 0xffff, (cpu->CC & 4) > 0, (cpu->CC & 2) > 0, (cpu->CC & 1) > 0);
     } else {
         printf("                                                  ");
     }
