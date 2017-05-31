@@ -47,6 +47,7 @@
 #define DEST_REG_SHIFT_AMT 9
 #define SOURCE1_SHIFT_AMT 6
 #define SECONDS_TO_SLEEP 0
+#define PUP_MASK 0x0020
 
 #define FETCH 0
 #define DECODE 1

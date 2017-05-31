@@ -341,6 +341,14 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                         } else { //else doing JSR
                             cpu->PC = cpu->regFile[Rs1]; //PC = BaseReg
                         }
+                    case PUP:
+                        if(cpu->IR & PUP_MASK) { //if pop then...
+                            Rd = cpu->regFile[6];
+                            cpu->regFile[6]++;
+                        } else {
+                            cpu->regFile[6]--;
+                            Rs1 = cpu->regFile[6];
+                        }
                         break;
                     default:
                         break;
