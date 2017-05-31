@@ -106,7 +106,7 @@ ALU_s;
 typedef ALU_s * ALU_p;
 
 typedef struct CPU_s {
-    int regFile[8];
+	Register regFile[8];
     int n, z, p;
     Register IR;
     Register PC;

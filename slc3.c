@@ -342,13 +342,18 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                             cpu->PC = cpu->regFile[Rs1]; //PC = BaseReg
                         }
                     case PUP:
-                        if(cpu->IR & PUP_MASK) { //if pop then...
-                            Rd = cpu->regFile[6];
+						Register j = cpu->IR & PUP_MASK;
+						j = j >> 5;
+						printf("x%04X", j);
+                        if(j) { //if pop then...
+							cpu->regFile[Rd] = memory[cpu->regFile[6]];
                             cpu->regFile[6]++;
-                        } else {
-                            cpu->regFile[6]--;
-                            Rs1 = cpu->regFile[6];
+                        } else {//if push then...
+							cpu->regFile[6]--;
+							memory[cpu->regFile[6]] = cpu->regFile[Rd];
+							
                         }
+						
                         break;
                     default:
                         break;
