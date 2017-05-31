@@ -26,4 +26,10 @@ CPU_s;
 
 typedef struct CPU_s * CPU_p;
 
+typedef struct Cache_Entry {
+    Register entryInfo;
+    Register data;
+}
+Cache_Entry; 
+
 #endif

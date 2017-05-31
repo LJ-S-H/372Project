@@ -8,6 +8,8 @@
 #define DEBUG 0
 #define INPUT_SIZE 50
 #define SIZE_OF_MEM 1024
+#define SIZE_OF_CACHE 256
+#define NUM_WORDS_IN_BLOCK 4
 #define DISPLAY_SIZE 16
 #define DEFAULT_ADDRESS 0x3000
 #define STRTOL_BASE 16
@@ -34,9 +36,16 @@
 #define BIT_8_MASK 0x0100
 #define BIT_10_MASK 0x0400
 #define BIT_11_MASK 0x0800
+#define CLEAR_TAG_MASK 0xFFFC
+#define CLEAR_TAG_AND_DIRTY_BIT_MASK 0xFFF8
+#define VALID_BIT_MASK 0x0008
+#define DIRTY_BIT_MASK 0x0004
+#define DIRTY_AND_VALID_BIT_MASK 0x000C
+#define TAG_MASK 0x0003
 #define OPCODE_SHIFT_AMT 12
 #define DEST_REG_SHIFT_AMT 9
 #define SOURCE1_SHIFT_AMT 6
+#define SECONDS_TO_SLEEP 0
 
 #define FETCH 0
 #define DECODE 1
@@ -84,6 +93,8 @@
 
 // you can define a simple memory module here for this program
 Register memory[SIZE_OF_MEM]; // 32 words of memory enough to store simple program
+Cache_Entry instructionCache[SIZE_OF_CACHE];
+Cache_Entry dataCache[SIZE_OF_CACHE];
 
 //Sets the condition codes, given a result.
 void setCC(short result, CPU_p cpu) {
@@ -98,6 +109,7 @@ void setCC(short result, CPU_p cpu) {
 
 //Prints out the register values, the IR, PC, MAR, and MDR.
 void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short start_address);
+void getData(CPU_p cpu);
 
 //C equivalent of LC3's GETC
 char getch() {
@@ -140,10 +152,12 @@ int trap(int trap_vector, CPU_p cpu) {
             fflush(stdout);
             break;
         case PUTS:
-            index = cpu->regFile[0];
-            while (memory[index] != 0) {
-              printf("%c", memory[index]);
-              index++;
+            cpu->MAR = cpu->regFile[0];
+            getData(cpu);
+            while (cpu->MDR != 0) {
+              printf("%c", cpu->MDR);
+              cpu->MAR++;
+              getData(cpu);
             }
             fflush(stdout);
             break;
@@ -151,7 +165,84 @@ int trap(int trap_vector, CPU_p cpu) {
     return 0;
 }
 
+void initializeCaches() {
+    int i, j;
+    for (i = 0; i < SIZE_OF_CACHE; i++) {
+          instructionCache[i].entryInfo = 0;
+          instructionCache[i].data = 0;
+          dataCache[i].entryInfo = 0;
+          dataCache[i].data = 0;
+    }
+}
 
+void accessMemory(CPU_p cpu, Register cacheIndex, Cache_Entry cache[]) {
+    sleep(SECONDS_TO_SLEEP); //Sleep because accessing memory.
+    cpu->MDR = memory[cpu->MAR];
+    cache[cacheIndex].data = cpu->MDR;
+}
+
+void getInstruction(CPU_p cpu) {
+    //entryInfo: (12 unused bits) + (1 bit valid bit) + (1 bit dirty bit) + (2 bits tag) 
+    Register memAddress = cpu->MAR;
+    int index = memAddress % SIZE_OF_CACHE;
+    unsigned short tagFromAddress = memAddress / SIZE_OF_CACHE;
+    
+    if (!(instructionCache[index].entryInfo & VALID_BIT_MASK)) { //validBit not set
+        instructionCache[index].entryInfo = instructionCache[index].entryInfo | (VALID_BIT_MASK + tagFromAddress);
+        accessMemory(cpu, index, instructionCache);
+    } else {
+        unsigned short tagFromCache = instructionCache[index].entryInfo & TAG_MASK;
+        if (tagFromCache == tagFromAddress) {
+            cpu->MDR = instructionCache[index].data;
+        } else {
+            instructionCache[index].entryInfo &= CLEAR_TAG_MASK; //Clear tag
+            instructionCache[index].entryInfo = instructionCache[index].entryInfo | tagFromAddress;
+            accessMemory(cpu, index, instructionCache);
+        }
+    }
+}
+
+void writeToMemory(CPU_p cpu, Register writeAddress, Register cacheIndex) {
+    sleep(SECONDS_TO_SLEEP); //Sleep because accessing memory.
+    memory[writeAddress] = dataCache[cacheIndex].data;
+}
+
+void writeData(CPU_p cpu) {
+    Register memAddress = cpu->MAR;
+    Register index = memAddress % SIZE_OF_CACHE;
+    Register tagFromAddress = memAddress / SIZE_OF_CACHE;
+    Register tagFromCache = dataCache[index].entryInfo & TAG_MASK;
+    
+    if (dataCache[index].entryInfo & DIRTY_BIT_MASK) { //If dirty bit set need to write to mem.
+        writeToMemory(cpu, (tagFromCache * SIZE_OF_CACHE) + index, index);
+    }
+    
+    dataCache[index].data = cpu->MDR;
+    dataCache[index].entryInfo = dataCache[index].entryInfo | (DIRTY_AND_VALID_BIT_MASK + tagFromAddress); //Set valid bit, dirty bit, and tag.           
+}
+
+void getData(CPU_p cpu) {
+    //entryInfo: (12 unused bits) + (1 bit valid bit) + (1 bit dirty bit) + (2 bits tag) 
+    Register memAddress = cpu->MAR;
+    int index = memAddress % SIZE_OF_CACHE;
+    unsigned short tagFromAddress = memAddress / SIZE_OF_CACHE;
+    unsigned short tagFromCache = dataCache[index].entryInfo & TAG_MASK;
+    
+    if (!(dataCache[index].entryInfo & VALID_BIT_MASK)) { //validBit not set
+        dataCache[index].entryInfo = dataCache[index].entryInfo | (VALID_BIT_MASK + tagFromAddress);
+        accessMemory(cpu, index, dataCache);
+    } else if (tagFromCache == tagFromAddress) { //Read hit
+            cpu->MDR = dataCache[index].data;
+    } else { //Read miss
+        if (dataCache[index].entryInfo & DIRTY_BIT_MASK) { //If dirty bit set need to write to mem.
+            writeToMemory(cpu, (tagFromCache * SIZE_OF_CACHE) + index, index);
+        }
+    
+        dataCache[index].entryInfo &= CLEAR_TAG_AND_DIRTY_BIT_MASK; //Clear tag and dirty bit.
+        dataCache[index].entryInfo = dataCache[index].entryInfo | tagFromAddress;
+        accessMemory(cpu, index, dataCache);
+    }
+}
 
 //Executes instructions on our simulated CPU.
 int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
@@ -162,7 +253,8 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
             case FETCH: // microstates 18, 33, 35 in the book
                 cpu->MAR = cpu->PC;
                 cpu->PC++; // increment PC
-                cpu->MDR = memory[cpu->MAR];
+                getInstruction(cpu);
+                //cpu->MDR = memory[cpu->MAR];
                 cpu->IR = cpu->MDR;
 
                 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -244,7 +336,8 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                     case LDI:
                     case STI:
                         cpu->MAR = cpu->PC + pcOffset;
-                        cpu->MDR = memory[memory[cpu->MAR]];
+                        getData(cpu);
+                        //cpu->MDR = memory[memory[cpu->MAR]];
                         cpu->MAR = cpu->MDR;
                         break;
                     default:
@@ -280,7 +373,8 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                     case LD:
                     case LDR:
                     case LDI:
-                        cpu->MDR = memory[cpu->MAR];
+                        //cpu->MDR = memory[cpu->MAR];
+                        getData(cpu);
                         break;
                     case ST:
                     case STR:
@@ -360,7 +454,8 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                     case ST:
                     case STR:
                     case STI:
-                        memory[cpu->MAR] = cpu->MDR;
+                        writeData(cpu);                    
+                        //memory[cpu->MAR] = cpu->MDR;
                         break;
                     case LEA:
                         cpu->regFile[Rd] = cpu->PC + pcOffset;
@@ -378,14 +473,15 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
 }
 
 void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short start_address) {
-  int i , j;
+  int i , j, temp;
   int numOfRegisters = sizeof(cpu->regFile)/sizeof(cpu->regFile[0]);
   printf("Registers            Instruction Cache               Memory\n");
   for (i = 0, j = mem_Offset; i < DISPLAY_SIZE; i++, j++) {
+    temp = i * 4;
     if(i < numOfRegisters) {
       printf("R%d: x%04X     ", i, cpu->regFile[i] & 0xffff);  //don't use leading 4 bits
       if (i < 4) { //Instruction cache contents
-          printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + (i * 4), memory[j], memory[j + 1], memory[j + 2], memory[j + 3]);
+          printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + temp, instructionCache[temp].data, instructionCache[temp + 1].data, instructionCache[temp + 2].data, instructionCache[temp + 3].data);
       } else if (i == 4) { //Data cache header
           printf("         Data L1 Cache              ");
       }                  
@@ -400,11 +496,17 @@ void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short star
     }
     
     if (i < 13 && i > 4) { //Data cache contents
-        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + 0x0A00 + ((i - 5) * 4), memory[j], memory[j + 1], memory[j + 2], memory[j + 3]);
+        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + 0x0A00 + ((i - 5) * 4), dataCache[temp].data, dataCache[temp + 1].data, dataCache[temp + 2].data, dataCache[temp + 3].data);
     }
     
     if(j < SIZE_OF_MEM){
-      printf("x%04X: x%04X\n", j + start_address, memory[j]);
+      printf("x%04X: x%04X", j + start_address, memory[j]);
+      Register index = j % SIZE_OF_CACHE;
+    
+      if (dataCache[index].entryInfo & DIRTY_BIT_MASK) { //If dirty bit set need to write to mem.
+          printf("  *D*");
+      }
+      printf("\n");
     } else {
       printf("\n");
     }
@@ -491,6 +593,7 @@ int main(int argc, char * argv[]) {
     Register breakpoints[MAX_NUM_BKPTS];
     int numBreakpoints = 0;
     clearBreakpoints(breakpoints);
+    initializeCaches();
 
   while (1) {
     printf("           Welcome to the LC-3 Simulator Simulator\n");
@@ -527,6 +630,7 @@ int main(int argc, char * argv[]) {
           programHalted = 0;
           numBreakpoints = 0;
           clearBreakpoints(breakpoints);
+          initializeCaches();
           //Initialize cpu fields;
           cpu_pointer->PC = 0;
           cpu_pointer->CC = Z;
