@@ -4,4 +4,6 @@
 		STI 	R0, A
 		LDI 	R1, A
 A 		.FILL 	x0009
+		HALT
 		.END
+			

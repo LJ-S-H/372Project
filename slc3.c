@@ -528,6 +528,8 @@ int main(int argc, char * argv[]) {
     int numBreakpoints = 0;
     clearBreakpoints(breakpoints);
     initializeCaches();
+	
+	cpu_pointer->regFile[6] = 0x10;
 
   while (1) {
     printf("           Welcome to the LC-3 Simulator Simulator\n");
