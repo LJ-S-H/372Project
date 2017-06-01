@@ -1,4 +1,16 @@
-R0 and R1 = 0
-R0 = 3
+R0-R4 = 0
+R0 = 10
+R1 = 11
+R2 = 12
+R3 = 13
+R4 = 14
 push (should do R0->R6)
+push (should do R1->R6)
+push (should do R2->R6)
+push (should do R3->R6)
+push (should not do R4->R6)
+pop  (should do R6->R0)
 pop  (should do R6->R1)
+pop  (should do R6->R2)
+pop  (should do R6->R3)
+pop  (should not do R6->R4)

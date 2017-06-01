@@ -345,15 +345,21 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
 					{
 						Register j = cpu->IR & PUP_MASK;
 						j = j >> 5;
-					
-                        if(j) { //if pop then...
+						cpu->regFile[6] = cpu->regFile[6] - DEFAULT_ADDRESS;
+						if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] <= STACK_SIZE 
+							&& STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] > 0
+							&& j) {//if pop then...
 							cpu->regFile[Rd] = memory[cpu->regFile[6]];
-                            cpu->regFile[6]++;
-                        } else {//if push then...
+							cpu->regFile[6]++;
+							cpu->regFile[5] = 0;
+						}else if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] < STACK_SIZE && !j) {//if push then...
 							cpu->regFile[6]--;
 							memory[cpu->regFile[6]] = cpu->regFile[Rd];
-							
-                        }
+							cpu->regFile[5] = 0;
+						}else {
+							cpu->regFile[5] = 1;
+						}
+						cpu->regFile[6] = cpu->regFile[6] + DEFAULT_ADDRESS;
 					}
                         break;
                     default:
@@ -528,8 +534,7 @@ int main(int argc, char * argv[]) {
     int numBreakpoints = 0;
     clearBreakpoints(breakpoints);
     initializeCaches();
-	
-	cpu_pointer->regFile[6] = 0x10;
+	cpu_pointer->regFile[6] = STACK_STARTING_ADDRESS;
 
   while (1) {
     printf("           Welcome to the LC-3 Simulator Simulator\n");
