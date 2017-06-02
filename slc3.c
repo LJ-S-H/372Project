@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// you can define a simple memory module here for this program
 Register memory[SIZE_OF_MEM]; // 32 words of memory enough to store simple program
 Cache_Entry instructionCache[SIZE_OF_CACHE];
 Cache_Entry dataCache[SIZE_OF_CACHE];
@@ -173,7 +172,7 @@ void getData(CPU_p cpu) {
 }
 
 //Executes instructions on our simulated CPU.
-int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
+int completeOneInstructionCycle(CPU_p cpu, ALU_p alu, unsigned short start_address) {
     Register opcode, Rd, Rs1, Rs2, immed_offset, nzp, BEN, pcOffset, j; // fields for the IR
     int state = FETCH;
     while (state != DONE) {
@@ -266,7 +265,7 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                         cpu->MAR = cpu->PC + pcOffset;
                         getData(cpu);
                         //cpu->MDR = memory[memory[cpu->MAR]];
-                        cpu->MAR = cpu->MDR;
+                        cpu->MAR = cpu->MDR - start_address;
                         break;
                     default:
                         break;
@@ -349,27 +348,16 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                         } else { //else doing JSR
                             cpu->PC = cpu->regFile[Rs1]; //PC = BaseReg
                         }
+                        break;
                     case PUP:
-                      printf("sdf\n");
-          						j = cpu->IR & PUP_MASK;
-          						j = j >> 5;
-          						cpu->regFile[6] = cpu->regFile[6] - DEFAULT_ADDRESS;
-          						if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] <= STACK_SIZE 
-          							&& STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] > 0
-          							&& j) {//if pop then...
-          							cpu->regFile[Rd] = memory[cpu->regFile[6]];
-          							cpu->regFile[6]++;
-          							cpu->regFile[5] = 0;
-          						}else if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] < STACK_SIZE && !j) {//if push then...
-          							cpu->regFile[6]--;
-          							memory[cpu->regFile[6]] = cpu->regFile[Rd];
-          							cpu->regFile[5] = 0;
-          						}else {
-          							cpu->regFile[5] = 1;
-          						}
-          						cpu->regFile[6] = cpu->regFile[6] + DEFAULT_ADDRESS;
-          					
-                                  break;
+                        if(cpu->IR & POP_MASK) { //Doing pop
+                            cpu->regFile[Rd] = memory[cpu->R6 - start_address];
+                            cpu->R6++;
+                        } else { //Doing push
+                            cpu->R6--;
+                            memory[cpu->R6 - start_address] = cpu->regFile[Rd];
+                        }                    
+                        break;
                     default:
                         break;
                 }
@@ -428,7 +416,7 @@ void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short star
   for (i = 0, j = mem_Offset; i < DISPLAY_SIZE; i++, j++) {
     temp = i * NUM_INST_CACHE_LINES;
     if(i < numOfRegisters) {
-      printf("R%d: x%04X     ", i, cpu->regFile[i] & 0xffff);  //don't use leading 4 bits
+      printf("R%d: x%04X     ", i, cpu->regFile[i] & NEG_NUM_MASK);  //don't use leading 4 bits
       if (i < NUM_INST_CACHE_LINES) { //Instruction cache contents
           printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + temp, instructionCache[temp].data, instructionCache[temp + 1].data, instructionCache[temp + 2].data, instructionCache[temp + 3].data);
       } else if (i == NUM_INST_CACHE_LINES) { //Data cache header
@@ -437,18 +425,18 @@ void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short star
     } else if (i < NUM_DATA_CACHE_LINES) { //Print cache stuff
         printf("              ");
     } else if (i == NUM_DATA_CACHE_LINES) { //print PC, IR, etc...
-        printf("PC:x%04X  IR:x%04X  A: x%04X  B: x%04X            ",cpu->PC + start_address, cpu->IR, alu->A  & 0xffff, alu->B & 0xffff);
+        printf("PC:x%04X  IR:x%04X  A: x%04X  B: x%04X            ",cpu->PC + start_address, cpu->IR, alu->A  & NEG_NUM_MASK, alu->B & NEG_NUM_MASK);
     } else if (i == NUM_DATA_CACHE_LINES + 1) {
-        printf("MAR: x%04X MDR: x%04X CC: N:%d Z:%d P:%d             ",cpu->MAR + start_address, cpu->MDR & 0xffff, (cpu->CC & 4) > 0, (cpu->CC & 2) > 0, (cpu->CC & 1) > 0);
+        printf("MAR: x%04X MDR: x%04X CC: N:%d Z:%d P:%d             ",cpu->MAR + start_address, cpu->MDR & NEG_NUM_MASK, (cpu->CC & NEG_BIT_MASK) > 0, (cpu->CC & ZERO_BIT_MASK) > 0, (cpu->CC & 1) > 0);
     } else {
         printf("                                                  ");
     }
     
     if (i < NUM_DATA_CACHE_LINES && i > NUM_INST_CACHE_LINES) { //Data cache contents
-        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + 0x0A00 + ((i - (NUM_INST_CACHE_LINES + 1)) * NUM_INST_CACHE_LINES), dataCache[temp].data, dataCache[temp + 1].data, dataCache[temp + 2].data, dataCache[temp + 3].data);
+        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + DATA_CACHE_OFFSET + ((i - (NUM_INST_CACHE_LINES + 1)) * NUM_INST_CACHE_LINES), dataCache[temp].data, dataCache[temp + 1].data, dataCache[temp + 2].data, dataCache[temp + 3].data);
     }
     
-    if(j < SIZE_OF_MEM){
+    if(j < SIZE_OF_MEM && j >= 0){
       printf("x%04X: x%04X", j + start_address, memory[j]);
       Register index = j % SIZE_OF_CACHE;
     
@@ -457,7 +445,7 @@ void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short star
       }
       printf("\n");
     } else {
-      printf("\n");
+      printf("x%04X: x0000\n", j + start_address);
     }
   }
 }
@@ -476,6 +464,7 @@ void getEnterInput() {
   }
 }
 
+//Clears the breakpoints by setting them to the default value.
 void clearBreakpoints(Register breakpoints[]) {
     int i;
     for (i = 0; i < MAX_NUM_BKPTS; i++) {
@@ -483,6 +472,7 @@ void clearBreakpoints(Register breakpoints[]) {
     }
 }
 
+//Checks to see if we've hit a breakpoint.
 int hitBreakpoint(Register breakpoints[], Register PC, int *numBreakpoints, int remove) {
    int i;
     for (i = 0; i < MAX_NUM_BKPTS; i++) {
@@ -545,7 +535,6 @@ int main(int argc, char * argv[]) {
     int numBreakpoints = 0;
     clearBreakpoints(breakpoints);
     initializeCaches();
-	cpu_pointer->regFile[6] = STACK_STARTING_ADDRESS;
 
   while (1) {
     printf("           Welcome to the LC-3 Simulator Simulator\n");
@@ -590,7 +579,7 @@ int main(int argc, char * argv[]) {
         break;
       case STEP:
         if (loadedProgram == 1) {
-          int response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
+          int response = completeOneInstructionCycle(cpu_pointer, alu_pointer, start_address);
           if (response == HALT) {
             loadedProgram = 0;
             programHalted = 1;                        
@@ -609,10 +598,10 @@ int main(int argc, char * argv[]) {
         break;
       case RUN:
         if (loadedProgram == 1) {
-          int response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
+          int response = completeOneInstructionCycle(cpu_pointer, alu_pointer, start_address);
           int reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC, &numBreakpoints, 1);
           while (response != HALT && !reachedBreakpoint && cpu_pointer->PC != SIZE_OF_MEM) {
-            response = completeOneInstructionCycle(cpu_pointer, alu_pointer);
+            response = completeOneInstructionCycle(cpu_pointer, alu_pointer, start_address);
             reachedBreakpoint = hitBreakpoint(breakpoints, cpu_pointer->PC, &numBreakpoints, 1);
           }
           
@@ -642,12 +631,12 @@ int main(int argc, char * argv[]) {
       case DISPLAY_MEM:
         printf("Starting Address: ");
         scanf("%s", input);
-        temp_offset = strtol(input, &temp, STRTOL_BASE) - start_address;
-        if(temp_offset >= SIZE_OF_MEM || temp_offset < 0){
+        temp_offset = strtol(input, &temp, STRTOL_BASE);
+        if(temp_offset < 0 || temp_offset >= NEG_NUM_MASK){
           printf("Not a valid address <ENTER> to continue.");
           getEnterInput();
         } else {
-          offset = temp_offset;
+          offset = temp_offset - start_address;
         }
         break;
 	  case EDIT:
