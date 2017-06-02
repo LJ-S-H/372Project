@@ -85,6 +85,7 @@ int trap(int trap_vector, CPU_p cpu) {
     return 0;
 }
 
+//Sets all the cache values to zero.
 void initializeCaches() {
     int i, j;
     for (i = 0; i < SIZE_OF_CACHE; i++) {
@@ -95,14 +96,16 @@ void initializeCaches() {
     }
 }
 
+//Accesses memory and updates the cache.
 void accessMemory(CPU_p cpu, Register cacheIndex, Cache_Entry cache[]) {
-    usleep(MICROSECONDS_TO_SLEEP); //Sleep because accessing memory.
-    cpu->MDR = memory[cpu->MAR];
-    cache[cacheIndex].data = cpu->MDR;
+    usleep(MICROSECONDS_TO_SLEEP); //Sleep to simulate memory accessing in the real world.
+    cpu->MDR = memory[cpu->MAR]; //Load the data from memory.
+    cache[cacheIndex].data = cpu->MDR; //Put the data into the dataCache.
 }
 
+//Places the current instruction into the MDR. Checks the instruction cache, and accesses
+//memory if necessary.
 void getInstruction(CPU_p cpu) {
-    //entryInfo: (12 unused bits) + (1 bit valid bit) + (1 bit dirty bit) + (2 bits tag) 
     Register memAddress = cpu->MAR;
     int index = memAddress % SIZE_OF_CACHE;
     unsigned short tagFromAddress = memAddress / SIZE_OF_CACHE;
@@ -122,18 +125,21 @@ void getInstruction(CPU_p cpu) {
     }
 }
 
+//Writes data from the dataCache to the main memory.
 void writeToMemory(CPU_p cpu, Register writeAddress, Register cacheIndex) {
     usleep(MICROSECONDS_TO_SLEEP); //Sleep because accessing memory.
     memory[writeAddress] = dataCache[cacheIndex].data;
 }
 
+//Writes data to the cache and sets the appropriate bits. If a dirty bit is encountered, 
+//it initiates the write back (to memory) process by calling writeToMemory.
 void writeData(CPU_p cpu) {
     Register memAddress = cpu->MAR;
     Register index = memAddress % SIZE_OF_CACHE;
     Register tagFromAddress = memAddress / SIZE_OF_CACHE;
     Register tagFromCache = dataCache[index].entryInfo & TAG_MASK;
     
-    if (dataCache[index].entryInfo & DIRTY_BIT_MASK) { //If dirty bit set need to write to mem.
+    if (dataCache[index].entryInfo & DIRTY_BIT_MASK) { //If dirty bit is set need to write to mem.
         writeToMemory(cpu, (tagFromCache * SIZE_OF_CACHE) + index, index);
     }
     
@@ -141,6 +147,8 @@ void writeData(CPU_p cpu) {
     dataCache[index].entryInfo = dataCache[index].entryInfo | (DIRTY_AND_VALID_BIT_MASK + tagFromAddress); //Set valid bit, dirty bit, and tag.           
 }
 
+//Loads data into the MDR using the address in the MAR. Checks the data cache, and accesses memory if a
+//read miss is encountered.
 void getData(CPU_p cpu) {
     //entryInfo: (12 unused bits) + (1 bit valid bit) + (1 bit dirty bit) + (2 bits tag) 
     Register memAddress = cpu->MAR;
@@ -148,12 +156,12 @@ void getData(CPU_p cpu) {
     unsigned short tagFromAddress = memAddress / SIZE_OF_CACHE;
     unsigned short tagFromCache = dataCache[index].entryInfo & TAG_MASK;
     
-    if (!(dataCache[index].entryInfo & VALID_BIT_MASK)) { //validBit not set
+    if (!(dataCache[index].entryInfo & VALID_BIT_MASK)) { //validBit not set, set valid bit and load data from mem into cache and the MDR.
         dataCache[index].entryInfo = dataCache[index].entryInfo | (VALID_BIT_MASK + tagFromAddress);
         accessMemory(cpu, index, dataCache);
-    } else if (tagFromCache == tagFromAddress) { //Read hit
+    } else if (tagFromCache == tagFromAddress) { //Read hit, load the MDR from the data cache.
             cpu->MDR = dataCache[index].data;
-    } else { //Read miss
+    } else { //Read miss, set bits and read from mem. Write to mem if necessary (if encounter dirty bit).
         if (dataCache[index].entryInfo & DIRTY_BIT_MASK) { //If dirty bit set need to write to mem.
             writeToMemory(cpu, (tagFromCache * SIZE_OF_CACHE) + index, index);
         }
@@ -166,7 +174,7 @@ void getData(CPU_p cpu) {
 
 //Executes instructions on our simulated CPU.
 int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
-    Register opcode, Rd, Rs1, Rs2, immed_offset, nzp, BEN, pcOffset; // fields for the IR
+    Register opcode, Rd, Rs1, Rs2, immed_offset, nzp, BEN, pcOffset, j; // fields for the IR
     int state = FETCH;
     while (state != DONE) {
         switch (state) {
@@ -342,26 +350,26 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
                             cpu->PC = cpu->regFile[Rs1]; //PC = BaseReg
                         }
                     case PUP:
-					{
-						Register j = cpu->IR & PUP_MASK;
-						j = j >> 5;
-						cpu->regFile[6] = cpu->regFile[6] - DEFAULT_ADDRESS;
-						if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] <= STACK_SIZE 
-							&& STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] > 0
-							&& j) {//if pop then...
-							cpu->regFile[Rd] = memory[cpu->regFile[6]];
-							cpu->regFile[6]++;
-							cpu->regFile[5] = 0;
-						}else if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] < STACK_SIZE && !j) {//if push then...
-							cpu->regFile[6]--;
-							memory[cpu->regFile[6]] = cpu->regFile[Rd];
-							cpu->regFile[5] = 0;
-						}else {
-							cpu->regFile[5] = 1;
-						}
-						cpu->regFile[6] = cpu->regFile[6] + DEFAULT_ADDRESS;
-					}
-                        break;
+                      printf("sdf\n");
+          						j = cpu->IR & PUP_MASK;
+          						j = j >> 5;
+          						cpu->regFile[6] = cpu->regFile[6] - DEFAULT_ADDRESS;
+          						if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] <= STACK_SIZE 
+          							&& STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] > 0
+          							&& j) {//if pop then...
+          							cpu->regFile[Rd] = memory[cpu->regFile[6]];
+          							cpu->regFile[6]++;
+          							cpu->regFile[5] = 0;
+          						}else if (STACK_STARTING_ADDRESS - DEFAULT_ADDRESS - cpu->regFile[6] < STACK_SIZE && !j) {//if push then...
+          							cpu->regFile[6]--;
+          							memory[cpu->regFile[6]] = cpu->regFile[Rd];
+          							cpu->regFile[5] = 0;
+          						}else {
+          							cpu->regFile[5] = 1;
+          						}
+          						cpu->regFile[6] = cpu->regFile[6] + DEFAULT_ADDRESS;
+          					
+                                  break;
                     default:
                         break;
                 }
@@ -412,31 +420,32 @@ int completeOneInstructionCycle(CPU_p cpu, ALU_p alu) {
     return 0;
 }
 
+//Prints the debug monitor (registers, both caches, and some of the memory)
 void printCurrentState(CPU_p cpu, ALU_p alu, int mem_Offset, unsigned short start_address) {
   int i , j, temp;
   int numOfRegisters = sizeof(cpu->regFile)/sizeof(cpu->regFile[0]);
   printf("Registers            Instruction Cache               Memory\n");
   for (i = 0, j = mem_Offset; i < DISPLAY_SIZE; i++, j++) {
-    temp = i * 4;
+    temp = i * NUM_INST_CACHE_LINES;
     if(i < numOfRegisters) {
       printf("R%d: x%04X     ", i, cpu->regFile[i] & 0xffff);  //don't use leading 4 bits
-      if (i < 4) { //Instruction cache contents
+      if (i < NUM_INST_CACHE_LINES) { //Instruction cache contents
           printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + temp, instructionCache[temp].data, instructionCache[temp + 1].data, instructionCache[temp + 2].data, instructionCache[temp + 3].data);
-      } else if (i == 4) { //Data cache header
+      } else if (i == NUM_INST_CACHE_LINES) { //Data cache header
           printf("         Data L1 Cache              ");
       }                  
-    } else if (i < 13) { //Print cache stuff
+    } else if (i < NUM_DATA_CACHE_LINES) { //Print cache stuff
         printf("              ");
-    } else if (i == 13) { //print PC, IR, etc...
+    } else if (i == NUM_DATA_CACHE_LINES) { //print PC, IR, etc...
         printf("PC:x%04X  IR:x%04X  A: x%04X  B: x%04X            ",cpu->PC + start_address, cpu->IR, alu->A  & 0xffff, alu->B & 0xffff);
-    } else if (i == 14) {
+    } else if (i == NUM_DATA_CACHE_LINES + 1) {
         printf("MAR: x%04X MDR: x%04X CC: N:%d Z:%d P:%d             ",cpu->MAR + start_address, cpu->MDR & 0xffff, (cpu->CC & 4) > 0, (cpu->CC & 2) > 0, (cpu->CC & 1) > 0);
     } else {
         printf("                                                  ");
     }
     
-    if (i < 13 && i > 4) { //Data cache contents
-        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + 0x0A00 + ((i - 5) * 4), dataCache[temp].data, dataCache[temp + 1].data, dataCache[temp + 2].data, dataCache[temp + 3].data);
+    if (i < NUM_DATA_CACHE_LINES && i > NUM_INST_CACHE_LINES) { //Data cache contents
+        printf("x%04X: x%04X x%04X x%04X x%04X      ", start_address + 0x0A00 + ((i - (NUM_INST_CACHE_LINES + 1)) * NUM_INST_CACHE_LINES), dataCache[temp].data, dataCache[temp + 1].data, dataCache[temp + 2].data, dataCache[temp + 3].data);
     }
     
     if(j < SIZE_OF_MEM){
@@ -488,6 +497,7 @@ int hitBreakpoint(Register breakpoints[], Register PC, int *numBreakpoints, int 
     return 0;
 }
 
+//Returns the index of the first location in the breakpoints array that is empty.
 int getEmptyIndex(Register breakpoints[]) {
   int i;
     for (i = 0; i < MAX_NUM_BKPTS; i++) {
@@ -498,6 +508,7 @@ int getEmptyIndex(Register breakpoints[]) {
     return -1;
 }
 
+//Prints all of the breakpoints that the user currently has set.
 void printCurrentBreakpoints(Register breakpoints[], int start_address) {
     printf("\n======= Current Breakpoints =======\n");
     int i;
